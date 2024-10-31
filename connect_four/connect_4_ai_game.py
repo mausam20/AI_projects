@@ -46,3 +46,36 @@ def clone_and_place_piece(board, player, column):
     new_board = board.copy()
     place_piece(new_board, player, column)
     return new_board
+
+# Commit 3 - Add Win Detection Logic
+
+def detect_win(board, player):
+    # Horizontal win
+    for col in range(COLUMNS - 3):
+        for row in range(ROWS):
+            if board[row][col] == player and board[row][col + 1] == player and \
+               board[row][col + 2] == player and board[row][col + 3] == player:
+                return True
+
+    # Vertical win
+    for col in range(COLUMNS):
+        for row in range(ROWS - 3):
+            if board[row][col] == player and board[row + 1][col] == player and \
+               board[row + 2][col] == player and board[row + 3][col] == player:
+                return True
+
+    # Diagonal upwards win
+    for col in range(COLUMNS - 3):
+        for row in range(ROWS - 3):
+            if board[row][col] == player and board[row + 1][col + 1] == player and \
+               board[row + 2][col + 2] == player and board[row + 3][col + 3] == player:
+                return True
+
+    # Diagonal downwards win
+    for col in range(COLUMNS - 3):
+        for row in range(3, ROWS):
+            if board[row][col] == player and board[row - 1][col + 1] == player and \
+               board[row - 2][col + 2] == player and board[row - 3][col + 3] == player:
+                return True
+
+    return False
