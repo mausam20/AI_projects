@@ -34,4 +34,15 @@ def valid_locations(board):
             valid_locations.append(i)
     return valid_locations
 
+def place_piece(board, player, column):
+    index = column - 1
+    for row in reversed(range(ROWS)):
+        if board[row][index] == EMPTY:
+            board[row][index] = player
+            return
 
+# Returns a successor board
+def clone_and_place_piece(board, player, column):
+    new_board = board.copy()
+    place_piece(new_board, player, column)
+    return new_board
