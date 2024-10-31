@@ -146,3 +146,48 @@ def evaluate_adjacents(adjacent_pieces, player):
         score += 10
 
     return score
+
+
+# Commit 5 - Implement Minimax Algorithm
+
+def minimax(board, ply, alpha, beta, maxi_player):
+    valid_cols = valid_locations(board)
+    is_terminal = is_terminal_board(board)
+
+    if ply == 0 or is_terminal:
+        if is_terminal:
+            if detect_win(board, HUMAN):
+                return (None, -1000000000)
+            elif detect_win(board, AI):
+                return (None, 1000000000)
+            else:  # There is no winner
+                return (None, 0)
+        else:  # Ply == 0
+            return (None, score(board, AI))
+
+    if maxi_player:
+        value = -math.inf
+        col = random.choice(valid_cols)
+        for c in valid_cols:
+            next_board = clone_and_place_piece(board, AI, c)
+            new_score = minimax(next_board, ply - 1, alpha, beta, False)[1]
+            if new_score > value:
+                value = new_score
+                col = c
+            alpha = max(alpha, new_score)
+            if beta <= alpha:
+                break
+        return col, value
+    else:
+        value = math.inf
+        col = random.choice(valid_cols)
+        for c in valid_cols:
+            next_board = clone_and_place_piece(board, HUMAN, c)
+            new_score = minimax(next_board, ply - 1, alpha, beta, True)[1]
+            if new_score < value:
+                value = new_score
+                col = c
+            beta = min(beta, new_score)
+            if beta <= alpha:
+                break
+        return col, value
