@@ -47,8 +47,6 @@ def clone_and_place_piece(board, player, column):
     place_piece(new_board, player, column)
     return new_board
 
-# Commit 3 - Add Win Detection Logic
-
 def detect_win(board, player):
     # Horizontal win
     for col in range(COLUMNS - 3):
@@ -79,3 +77,72 @@ def detect_win(board, player):
                 return True
 
     return False
+
+def is_terminal_board(board):
+    return detect_win(board, HUMAN) or detect_win(board, AI) or \
+           len(valid_locations(board)) == 0
+
+def score(board, player):
+    score = 0
+    # Give more weight to center columns
+    for col in range(2, 5):
+        for row in range(ROWS):
+            if board[row][col] == player:
+                if col == 3:
+                    score += 3
+                else:
+                    score += 2
+
+    # Horizontal pieces
+    for col in range(COLUMNS - 3):
+        for row in range(ROWS):
+            adjacent_pieces = [board[row][col], board[row][col + 1],
+                               board[row][col + 2], board[row][col + 3]]
+            score += evaluate_adjacents(adjacent_pieces, player)
+
+    # Vertical pieces
+    for col in range(COLUMNS):
+        for row in range(ROWS - 3):
+            adjacent_pieces = [board[row][col], board[row + 1][col],
+                               board[row + 2][col], board[row + 3][col]]
+            score += evaluate_adjacents(adjacent_pieces, player)
+
+    # Diagonal upwards pieces
+    for col in range(COLUMNS - 3):
+        for row in range(ROWS - 3):
+            adjacent_pieces = [board[row][col], board[row + 1][col + 1],
+                               board[row + 2][col + 2], board[row + 3][col + 3]]
+            score += evaluate_adjacents(adjacent_pieces, player)
+
+    # Diagonal downwards pieces
+    for col in range(COLUMNS - 3):
+        for row in range(3, ROWS):
+            adjacent_pieces = [board[row][col], board[row - 1][col + 1],
+                               board[row - 2][col + 2], board[row - 3][col + 3]]
+            score += evaluate_adjacents(adjacent_pieces, player)
+
+    return score
+
+def evaluate_adjacents(adjacent_pieces, player):
+    opponent = AI if player == HUMAN else HUMAN
+    score = 0
+    player_pieces = 0
+    empty_spaces = 0
+    opponent_pieces = 0
+
+    for p in adjacent_pieces:
+        if p == player:
+            player_pieces += 1
+        elif p == EMPTY:
+            empty_spaces += 1
+        elif p == opponent:
+            opponent_pieces += 1
+
+    if player_pieces == 4:
+        score += 99999
+    elif player_pieces == 3 and empty_spaces == 1:
+        score += 100
+    elif player_pieces == 2 and empty_spaces == 2:
+        score += 10
+
+    return score
