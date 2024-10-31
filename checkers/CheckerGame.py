@@ -11,11 +11,11 @@ class CheckerGame():
 
         # Initialize two AI players
         self.playerAI = AIPlayer(self)
+        self.playerTurn = True
         self.opponentAI = AIPlayer(self)
         self.GUI = BoardGUI(self)
 
         # Start the game loop with two AI agents
-        self.playerTurn = True
         _thread.start_new_thread(self.AIMakeMove, ())
 
         self.GUI.startGUI()
@@ -76,9 +76,9 @@ class CheckerGame():
 
     # Switch turns between AI player and AI opponent.
     def changePlayerTurn(self):
-        if self.playerTurn and self.opponentCanContinue():
+        if self.playerTurn and self.playerCanContinue():
             self.playerTurn = False
-        elif not self.playerTurn and self.playerCanContinue():
+        elif not self.playerTurn and self.opponentCanContinue():
             self.playerTurn = True
 
     # Apply the given move in the game
@@ -95,7 +95,7 @@ class CheckerGame():
             self.getGameSummary()
             return
         self.changePlayerTurn()
-        _thread.start_new_thread(self.AIMakeMove, ())
+        self.AIMakeMove()
 
     # Pause GUI and let the current AI make the next move.
     def AIMakeMove(self):
