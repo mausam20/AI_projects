@@ -1,5 +1,3 @@
-# Mini-Checkers Game
-
 import _thread
 from board_gui import *
 from ai_player import *
@@ -10,17 +8,19 @@ class CheckerGame():
         self.lock = _thread.allocate_lock()
 
         self.board = self.initBoard()
-        self.AIPlayer = AIPlayer(self)
+
+        # Initialize two AI players
+        self.playerAI = AIPlayer(self)
+        self.opponentAI = AIPlayer(self)
         self.GUI = BoardGUI(self)
 
-        # AI goes first
+        # Start the game loop with two AI agents
+        self.playerTurn = True
         _thread.start_new_thread(self.AIMakeMove, ())
 
         self.GUI.startGUI()
 
-    # This function initializes the game board.
-    # Each checker has a label. Positive checkers for the player,
-    # and negative checkers for the opponent.
+    # Initialize the game board with positions
     def initBoard(self):
         board = [[0] * 6 for _ in range(6)]
         self.playerCheckers = set()
@@ -74,54 +74,50 @@ class CheckerGame():
     def isPlayerTurn(self):
         return self.playerTurn
 
-    # Switch turns between player and opponent.
-    # If one of them has no legal moves, the other can keep playing
+    # Switch turns between AI player and AI opponent.
     def changePlayerTurn(self):
         if self.playerTurn and self.opponentCanContinue():
             self.playerTurn = False
         elif not self.playerTurn and self.playerCanContinue():
             self.playerTurn = True
 
-    # apply the given move in the game
+    # Apply the given move in the game
     def move(self, oldrow, oldcol, row, col):
         if not self.isValidMove(oldrow, oldcol, row, col, self.playerTurn):
-            return
-
-        # human player can only choose from the possible actions
-        if self.playerTurn and not ([oldrow, oldcol, row, col] in self.getPossiblePlayerActions()):
             return
 
         self.makeMove(oldrow, oldcol, row, col)
         _thread.start_new_thread(self.next, ())
 
-    # update game state
+    # Update game state
     def next(self):
         if self.isGameOver():
             self.getGameSummary()
             return
         self.changePlayerTurn()
-        if self.playerTurn:  # let player keep going
-            return
-        else:  # AI's turn
-            self.AIMakeMove()
+        _thread.start_new_thread(self.AIMakeMove, ())
 
-    # Temporarily Pause GUI and ask AI player to make next move.
+    # Pause GUI and let the current AI make the next move.
     def AIMakeMove(self):
         self.GUI.pauseGUI()
-        oldrow, oldcol, row, col = self.AIPlayer.getNextMove()
+        if self.playerTurn:
+            oldrow, oldcol, row, col = self.playerAI.getNextMove()
+        else:
+            oldrow, oldcol, row, col = self.opponentAI.getNextMove()
+
         self.move(oldrow, oldcol, row, col)
         self.GUI.resumeGUI()
 
-    # update checker position
+    # Update checker position
     def makeMove(self, oldrow, oldcol, row, col):
         toMove = self.board[oldrow][oldcol]
         self.checkerPositions[toMove] = (row, col)
 
-        # move the checker
+        # Move the checker
         self.board[row][col] = self.board[oldrow][oldcol]
         self.board[oldrow][oldcol] = 0
 
-        # capture move, remove captured checker
+        # Capture move, remove captured checker
         if abs(oldrow - row) == 2:
             toRemove = self.board[(oldrow + row) // 2][(oldcol + col) // 2]
             if toRemove > 0:
@@ -135,9 +131,9 @@ class CheckerGame():
 
     # Get all possible moves for the current player
     def getPossiblePlayerActions(self):
-        checkers = self.playerCheckers
-        regularDirs = [[-1, -1], [-1, 1]]
-        captureDirs = [[-2, -2], [-2, 2]]
+        checkers = self.playerCheckers if self.playerTurn else self.opponentCheckers
+        regularDirs = [[-1, -1], [-1, 1]] if self.playerTurn else [[1, -1], [1, 1]]
+        captureDirs = [[-2, -2], [-2, 2]] if self.playerTurn else [[2, -2], [2, 2]]
 
         regularMoves = []
         captureMoves = []
@@ -145,92 +141,67 @@ class CheckerGame():
             oldrow = self.checkerPositions[checker][0]
             oldcol = self.checkerPositions[checker][1]
             for dir in regularDirs:
-                if self.isValidMove(oldrow, oldcol, oldrow + dir[0], oldcol + dir[1], True):
+                if self.isValidMove(oldrow, oldcol, oldrow + dir[0], oldcol + dir[1], self.playerTurn):
                     regularMoves.append([oldrow, oldcol, oldrow + dir[0], oldcol + dir[1]])
             for dir in captureDirs:
-                if self.isValidMove(oldrow, oldcol, oldrow + dir[0], oldcol + dir[1], True):
+                if self.isValidMove(oldrow, oldcol, oldrow + dir[0], oldcol + dir[1], self.playerTurn):
                     captureMoves.append([oldrow, oldcol, oldrow + dir[0], oldcol + dir[1]])
 
-        # must take capture move if possible
-        if captureMoves:
-            return captureMoves
-        else:
-            return regularMoves
+        # Must take capture move if possible
+        return captureMoves if captureMoves else regularMoves
 
-    # check if the given move if valid for the current player
+    # Check if the given move is valid
     def isValidMove(self, oldrow, oldcol, row, col, playerTurn):
-        # invalid index
         if oldrow < 0 or oldrow > 5 or oldcol < 0 or oldcol > 5 \
                 or row < 0 or row > 5 or col < 0 or col > 5:
             return False
-        # No checker exists in original position
-        if self.board[oldrow][oldcol] == 0:
-            return False
-        # Another checker exists in destination position
-        if self.board[row][col] != 0:
+        if self.board[oldrow][oldcol] == 0 or self.board[row][col] != 0:
             return False
 
-        # player's turn
         if playerTurn:
-            if row - oldrow == -1:  # regular move
+            if row - oldrow == -1:
                 return abs(col - oldcol) == 1
-            elif row - oldrow == -2:  # capture move
-                #  \ direction or / direction
+            elif row - oldrow == -2:
                 return (col - oldcol == -2 and self.board[row + 1][col + 1] < 0) \
                     or (col - oldcol == 2 and self.board[row + 1][col - 1] < 0)
             else:
                 return False
-        # opponent's turn
         else:
-            if row - oldrow == 1:  # regular move
+            if row - oldrow == 1:
                 return abs(col - oldcol) == 1
-            elif row - oldrow == 2:  # capture move
-                # / direction or \ direction
+            elif row - oldrow == 2:
                 return (col - oldcol == -2 and self.board[row - 1][col + 1] > 0) \
                     or (col - oldcol == 2 and self.board[row - 1][col - 1] > 0)
             else:
                 return False
 
-    # Check if the player can cantinue
+    # Checks if either AI can continue
     def playerCanContinue(self):
-        directions = [[-1, -1], [-1, 1], [-2, -2], [-2, 2]]
-        for checker in self.playerCheckers:
-            position = self.checkerPositions[checker]
-            row = position[0]
-            col = position[1]
-            for dir in directions:
-                if self.isValidMove(row, col, row + dir[0], col + dir[1], True):
-                    return True
-        return False
+        return any(self.isValidMove(r, c, r + d[0], c + d[1], True)
+                   for checker in self.playerCheckers
+                   for r, c in [self.checkerPositions[checker]]
+                   for d in [[-1, -1], [-1, 1], [-2, -2], [-2, 2]])
 
-    # Check if the opponent can cantinue
     def opponentCanContinue(self):
-        directions = [[1, -1], [1, 1], [2, -2], [2, 2]]
-        for checker in self.opponentCheckers:
-            position = self.checkerPositions[checker]
-            row = position[0]
-            col = position[1]
-            for dir in directions:
-                if self.isValidMove(row, col, row + dir[0], col + dir[1], False):
-                    return True
-        return False
+        return any(self.isValidMove(r, c, r + d[0], c + d[1], False)
+                   for checker in self.opponentCheckers
+                   for r, c in [self.checkerPositions[checker]]
+                   for d in [[1, -1], [1, 1], [2, -2], [2, 2]])
 
-    # Neither player can can continue, thus game over
+    # Checks if game is over
     def isGameOver(self):
-        if len(self.playerCheckers) == 0 or len(self.opponentCheckers) == 0:
-            return True
-        else:
-            return (not self.playerCanContinue()) and (not self.opponentCanContinue())
+        return len(self.playerCheckers) == 0 or len(self.opponentCheckers) == 0 \
+            or (not self.playerCanContinue() and not self.opponentCanContinue())
 
     def getGameSummary(self):
         self.GUI.pauseGUI()
         print("Game Over!")
         playerNum = len(self.playerCheckers)
         opponentNum = len(self.opponentCheckers)
-        if (playerNum > opponentNum):
-            print("Player won by {0:d} checkers! Congratulation!".format(playerNum - opponentNum))
-        elif (playerNum < opponentNum):
-            print("Computer won by {0:d} checkers! Try again!".format(opponentNum - playerNum))
+        if playerNum > opponentNum:
+            print("AI Player 1 won by {0:d} checkers!".format(playerNum - opponentNum))
+        elif playerNum < opponentNum:
+            print("AI Player 2 won by {0:d} checkers!".format(opponentNum - playerNum))
         else:
             print("It is a draw! Try again!")
 
