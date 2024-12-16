@@ -231,10 +231,10 @@ def play_game():
     while not game.is_game_over():
         if game.current_player == 1:
             move = agent1.select_move(game)
-            print(f"Player 1 makes move: {move}")
+            # print(f"Player 1 makes move: {move}")
         else:
             move = agent2.select_move(game)
-            print(f"Player 2 makes move: {move}")
+            # print(f"Player 2 makes move: {move}")
 
         game.make_move(move)
         img = draw_board(game.board)

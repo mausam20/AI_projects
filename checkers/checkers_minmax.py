@@ -12,7 +12,7 @@ KING_PLAYER_2 = 4
 SQUARE_SIZE = 100
 COLORS = {
     "empty": (255, 255, 255),
-    "board_dark": (139, 69, 19),
+    "board_dark": (0, 0, 0),
     "player_1": (255, 0, 0),
     "player_2": (0, 0, 255),
     "king_player_1": (200, 0, 0),
@@ -165,6 +165,17 @@ def get_all_valid_moves(board, player):
                         moves.append(((row, col), new_pos))
     return moves
 
+# Determine the winner
+def get_winner(board):
+    player_1_pieces = np.sum((board == PLAYER_1) | (board == KING_PLAYER_1))
+    player_2_pieces = np.sum((board == PLAYER_2) | (board == KING_PLAYER_2))
+
+    if player_1_pieces == 0:
+        return "Player 2 wins!"
+    elif player_2_pieces == 0:
+        return "Player 1 wins!"
+    return None
+
 # Main game loop
 def main():
     board = create_board()
@@ -177,12 +188,13 @@ def main():
         cv2.waitKey(500)
 
         # Minimax to decide the move
-        _, best_move = minimax(board, 3, -math.inf, math.inf, turn == PLAYER_1)
+        _, best_move = minimax(board, 4, -math.inf, math.inf, turn == PLAYER_1)
 
         if best_move:
             apply_move(board, best_move[0], best_move[1])
         else:
-            print(f"Player {turn} has no valid moves! Game over.")
+            winner = get_winner(board)
+            print(winner if winner else f"Player {turn} has no valid moves! Game over.")
             break
 
         # Switch turns

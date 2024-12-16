@@ -168,10 +168,10 @@ while not is_terminal_node(board):
     display_game()
 
     if turn == 0:
-        print("Player 1 (AI) turn")
+        # print("Player 1 (AI) turn")
         col = mcts_search(board, PLAYER_1)
     else:
-        print("Player 2 (AI) turn")
+        # print("Player 2 (AI) turn")
         col = mcts_search(board, PLAYER_2)
 
     if is_valid_location(board, col):
