@@ -221,7 +221,7 @@ def draw_board(board):
 
     return img
 
-def play_game():
+def main():
     game = CheckersGame()
     agent1 = CheckersAgent(player=1)
     agent2 = CheckersAgent(player=-1)
@@ -251,4 +251,4 @@ def play_game():
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    play_game()
+    main()
