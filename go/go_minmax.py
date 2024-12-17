@@ -1,140 +1,207 @@
 import numpy as np
 import cv2
+import math
 
-class GoGameWithOpenCV:
-    def __init__(self, size=5):
-        self.size = size
-        self.board = np.zeros((size, size), dtype=int)
-        self.current_player = 1  # 1 for black, -1 for white
-        self.cell_size = 100
-        self.board_color = (255, 220, 180)  # Light beige
-        self.black_stone_color = (0, 0, 0)
-        self.white_stone_color = (255, 255, 255)
-        self.previous_states = []
-        self.pass_count = 0
-        self.game_over = False
-        self.move_history = []
 
-    def is_valid_move(self, x, y):
-        if not (0 <= x < self.size and 0 <= y < self.size) or self.board[x, y] != 0:
+class SimpleGoGame:
+    def __init__(self, board_size=5):
+        # Initialize board and some settings
+        self.board_size = board_size
+        self.grid = np.zeros((board_size, board_size), dtype=int)
+        self.player_turn = 1
+        self.tile_size = 100
+        self.background_color = (255, 220, 180)
+        self.black_color = (0, 0, 0)
+        self.white_color = (255, 255, 255)
+        self.pass_moves = 0
+        self.game_finished = False
+
+    def check_valid_move(self, row, col):
+        """
+        Check if the move is valid by placing a stone temporarily.
+        """
+        # Out of bounds or not empty
+        if not (0 <= row < self.board_size and 0 <= col < self.board_size) or self.grid[row, col] != 0:
             return False
 
-        # Simulate the move to check for suicide
-        self.board[x, y] = self.current_player
-        valid = self.has_liberties(x, y)
-        self.board[x, y] = 0  # Undo the move
-        return valid
+        # Place the stone temporarily and check if it has liberties
+        self.grid[row, col] = self.player_turn
+        is_valid = self.check_liberty(row, col)
+        # reverse the move
+        self.grid[row, col] = 0
+        return is_valid
 
-    def has_liberties(self, x, y, visited=None):
+    def check_liberty(self, row, col, visited=None):
+        """
+        Check if a stone (or group) has any liberties (empty spaces around it).
+        """
         if visited is None:
             visited = set()
-        if (x, y) in visited:
+        if (row, col) in visited:
             return False
-        visited.add((x, y))
+        visited.add((row, col))
 
-        if self.board[x, y] == 0:  # Empty space means liberty
+        # Found an empty space
+        if self.grid[row, col] == 0:
             return True
 
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < self.size and 0 <= ny < self.size:
-                if self.board[nx, ny] == 0 or (self.board[nx, ny] == self.board[x, y] and self.has_liberties(nx, ny, visited)):
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = row + dr, col + dc
+            if 0 <= nr < self.board_size and 0 <= nc < self.board_size:
+                if self.grid[nr, nc] == 0 or (
+                        self.grid[nr, nc] == self.grid[row, col] and self.check_liberty(nr, nc, visited)):
                     return True
         return False
 
-    def remove_captured_stones(self):
-        to_remove = []
-        for x in range(self.size):
-            for y in range(self.size):
-                if self.board[x, y] != 0 and not self.has_liberties(x, y):
-                    to_remove.append((x, y))
-        for x, y in to_remove:
-            self.board[x, y] = 0
+    def clear_captured_stones(self):
+        """
+        Remove stones that are captured (no liberties).
+        """
+        # List of stones to remove
+        captured = []
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                if self.grid[r, c] != 0 and not self.check_liberty(r, c):
+                    # Mark stone to remove
+                    captured.append((r, c))
+        for r, c in captured:
+            # Remove the captured stones
+            self.grid[r, c] = 0
 
-    def make_move(self, x, y):
-        if not self.is_valid_move(x, y):
-            return False
-        self.board[x, y] = self.current_player
-        self.remove_captured_stones()
-        self.move_history.append((self.current_player, x, y))
-        print(f"Player {'Black' if self.current_player == 1 else 'White'} places a stone at ({x}, {y})")
-        self.current_player *= -1  # Switch player
-        self.pass_count = 0  # Reset pass count after a valid move
-        return True
+    def apply_move(self, row, col):
+        """
+        Place a stone on the board and check for captures.
+        """
+        self.grid[row, col] = self.player_turn
+        self.clear_captured_stones()
+        # Switch players
+        self.player_turn *= -1
 
-    def pass_turn(self):
-        print(f"Player {'Black' if self.current_player == 1 else 'White'} passes their turn.")
-        self.current_player *= -1
-        self.pass_count += 1
-        if self.pass_count >= 2:
-            self.calculate_winner()
-
-    def calculate_winner(self):
-        black_score = np.sum(self.board == 1)
-        white_score = np.sum(self.board == -1)
-        print("Game Over")
-        print(f"Final Scores -> Black: {black_score}, White: {white_score}")
-        if black_score > white_score:
-            print("Winner: Black")
-        elif white_score > black_score:
-            print("Winner: White")
-        else:
-            print("It's a tie!")
-        self.game_over = True
+    def find_valid_moves(self):
+        """
+        Get a list of all possible moves for the player.
+        """
+        possible_moves = []
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                if self.check_valid_move(r, c):
+                    possible_moves.append((r, c))
+        return possible_moves
 
     def calculate_score(self):
-        black_score = np.sum(self.board == 1)
-        white_score = np.sum(self.board == -1)
-        return black_score, white_score
+        """
+        Simple evaluation: count black stones and white stones.
+        """
+        return np.sum(self.grid)
 
-    def get_valid_moves(self):
-        return [(x, y) for x in range(self.size) for y in range(self.size) if self.is_valid_move(x, y)]
+    def minimax(self, depth, alpha, beta, is_max):
+        """
+        Minimax algorithm with pruning to make a decision.
+        """
+        if depth == 0 or self.check_game_end():
+            # Score the board
+            return self.calculate_score(), None
 
-    def best_move(self):
-        valid_moves = self.get_valid_moves()
+        valid_moves = self.find_valid_moves()
+        # If no moves, score the board
         if not valid_moves:
-            return None
-        return valid_moves[np.random.randint(len(valid_moves))]
+            return self.calculate_score(), None
 
-    def draw_board(self):
-        img_size = self.size * self.cell_size
-        img = np.ones((img_size, img_size, 3), dtype=np.uint8) * 255
-        img[:, :] = self.board_color
+        # Maximizing player (black)
+        if is_max:
+            max_value = -math.inf
+            best_step = None
+            for move in valid_moves:
+                temp_game = self.deep_copy()
+                temp_game.apply_move(*move)
+                score, _ = temp_game.minimax(depth - 1, alpha, beta, False)
+                if score > max_value:
+                    max_value = score
+                    best_step = move
+                alpha = max(alpha, score)
+                if beta <= alpha:
+                    break  # Prune
+            return max_value, best_step
+        # Minimizing player (white)
+        else:
+            min_value = math.inf
+            best_step = None
+            for move in valid_moves:
+                temp_game = self.deep_copy()
+                temp_game.apply_move(*move)
+                score, _ = temp_game.minimax(depth - 1, alpha, beta, True)
+                if score < min_value:
+                    min_value = score
+                    best_step = move
+                beta = min(beta, score)
+                # Prune
+                if beta <= alpha:
+                    break
+            return min_value, best_step
 
-        # Draw grid lines
-        for i in range(self.size + 1):
-            start = i * self.cell_size
-            cv2.line(img, (start, 0), (start, img_size), (0, 0, 0), 2)
-            cv2.line(img, (0, start), (img_size, start), (0, 0, 0), 2)
+    def check_game_end(self):
+        """
+        Check if the game has ended after two consecutive passes.
+        """
+        return self.pass_moves >= 2
 
-        # Draw stones
-        for x in range(self.size):
-            for y in range(self.size):
-                if self.board[x, y] == 1:  # Black stone
-                    center = (y * self.cell_size + self.cell_size // 2, x * self.cell_size + self.cell_size // 2)
-                    cv2.circle(img, center, self.cell_size // 3, self.black_stone_color, -1)
-                elif self.board[x, y] == -1:  # White stone
-                    center = (y * self.cell_size + self.cell_size // 2, x * self.cell_size + self.cell_size // 2)
-                    cv2.circle(img, center, self.cell_size // 3, self.white_stone_color, -1)
+    def deep_copy(self):
+        """
+        Create a copy of the game state for simulations.
+        """
+        copied_game = SimpleGoGame(self.board_size)
+        copied_game.grid = np.copy(self.grid)
+        copied_game.player_turn = self.player_turn
+        return copied_game
 
-        return img
+    def display_board(self):
+        """
+        Draw the game board using OpenCV.
+        """
+        board_img_size = self.board_size * self.tile_size
+        board_img = np.ones((board_img_size, board_img_size, 3), dtype=np.uint8) * 255
+        board_img[:, :] = self.background_color
 
-    def play_game(self):
-        while not self.game_over:
-            img = self.draw_board()
-            cv2.imshow("Go Game", img)
+        for i in range(self.board_size + 1):
+            pos = i * self.tile_size
+            cv2.line(board_img, (pos, 0), (pos, board_img_size), (0, 0, 0), 2)
+            cv2.line(board_img, (0, pos), (board_img_size, pos), (0, 0, 0), 2)
+
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                center = (c * self.tile_size + self.tile_size // 2, r * self.tile_size + self.tile_size // 2)
+                if self.grid[r, c] == 1:
+                    cv2.circle(board_img, center, self.tile_size // 3, self.black_color, -1)
+                elif self.grid[r, c] == -1:
+                    cv2.circle(board_img, center, self.tile_size // 3, self.white_color, -1)
+        return board_img
+
+    def start_game(self, search_depth=3):
+        """Run the Go game using minimax."""
+        while not self.check_game_end():
+            img = self.display_board()
+            cv2.imshow("Simple Go Game", img)
             cv2.waitKey(500)
-            move = self.best_move()
-            if move:
-                self.make_move(*move)
-            else:
-                self.pass_turn()
 
-        img = self.draw_board()
-        cv2.imshow("Go Game", img)
+            _, chosen_move = self.minimax(search_depth, -math.inf, math.inf, self.player_turn == 1)
+            if chosen_move:
+                self.apply_move(*chosen_move)
+                print(f"Player {'Black' if self.player_turn == -1 else 'White'} moves to {chosen_move}")
+            else:
+                print(f"Player {'Black' if self.player_turn == 1 else 'White'} passes.")
+                self.pass_moves += 1
+                self.player_turn *= -1
+
+        print("Game Over!")
+        black, white = np.sum(self.grid == 1), np.sum(self.grid == -1)
+        print(f"Final Score: Black = {black}, White = {white}")
+        print("Winner:", "Black" if black > white else "White" if white > black else "Tie")
+
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-# Run the game
-game = GoGameWithOpenCV(size=5)
-game.play_game()
+
+# Start the game
+if __name__ == "__main__":
+    game = SimpleGoGame(board_size=5)
+    game.start_game(search_depth=3)

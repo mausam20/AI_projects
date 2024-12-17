@@ -1,258 +1,209 @@
 import numpy as np
-import cv2
+import copy
 import math
+import cv2
 
 # Constants
-BOARD_SIZE = 8
-PLAYER_1 = 1
-PLAYER_2 = 2
-EMPTY = 0
-KING_PLAYER_1 = 3
-KING_PLAYER_2 = 4
-SQUARE_SIZE = 80
+SQUARE_SIZE = 80  # Size of each square in pixels
+BOARD_SIZE = 8  # 8x8 board
+PLAYER_ONE = 1  # Player 1's pieces
+PLAYER_TWO = -1  # Player 2's pieces
+KING_ONE = 2  # Player 1's kings
+KING_TWO = -2  # Player 2's kings
+
+# Colors for the board and pieces
 COLORS = {
-    "empty": (255, 255, 255),
-    "board_dark": (0, 0, 0),
-    "player_1": (255, 0, 0),
-    "player_2": (0, 0, 255),
-    "king_player_1": (200, 0, 0),
-    "king_player_2": (0, 0, 200),
+    "light": (255, 255, 255),
+    "dark": (0, 0, 0),
+    "p1_piece": (0, 0, 255),  # Player 1
+    "p2_piece": (255, 0, 0),  # Player 2
+    "p1_king": (0, 0, 200),  # Player 1 King
+    "p2_king": (200, 0, 0),  # Player 2 King
 }
 
-# Directions for normal pieces and kings
-DIRECTIONS = {
-    PLAYER_1: [(1, 1), (1, -1)],
-    PLAYER_2: [(-1, 1), (-1, -1)],
-    "king": [(1, 1), (1, -1), (-1, 1), (-1, -1)]
-}
+# Checkers Game Class
+class CheckersGame:
+    def __init__(self):
+        self.board = np.zeros((8, 8), dtype=int)
+        self.current_player = PLAYER_ONE
+        self.initialize_board()
 
-# Initialize the board
-def create_board():
-    board = np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=int)
-    for row in range(BOARD_SIZE):
-        for col in range(BOARD_SIZE):
-            if (row + col) % 2 == 1:
-                if row < 3:
-                    board[row, col] = PLAYER_1
-                elif row > 4:
-                    board[row, col] = PLAYER_2
-    return board
+    def initialize_board(self):
+        """Place pieces on the board for both players."""
+        for i in range(3):  # Top rows for Player 1
+            for j in range(8):
+                if (i + j) % 2 == 1:
+                    self.board[i][j] = PLAYER_ONE
+        for i in range(5, 8):  # Bottom rows for Player 2
+            for j in range(8):
+                if (i + j) % 2 == 1:
+                    self.board[i][j] = PLAYER_TWO
 
-# Draw the board using OpenCV
-def draw_board(board):
-    image = np.zeros((BOARD_SIZE * SQUARE_SIZE, BOARD_SIZE * SQUARE_SIZE, 3), dtype=np.uint8)
+    def get_legal_moves(self):
+        capturing_moves = []
+        regular_moves = []
 
-    for row in range(BOARD_SIZE):
-        for col in range(BOARD_SIZE):
-            top_left = (col * SQUARE_SIZE, row * SQUARE_SIZE)
-            bottom_right = ((col + 1) * SQUARE_SIZE, (row + 1) * SQUARE_SIZE)
+        for i in range(8):
+            for j in range(8):
+                if self.board[i][j] == self.current_player:
+                    capturing_moves += self.get_capturing_moves(i, j, king=False)
+                    regular_moves += self.get_regular_moves(i, j, king=False)
+                elif self.board[i][j] == 2 * self.current_player:
+                    capturing_moves += self.get_capturing_moves(i, j, king=True)
+                    regular_moves += self.get_regular_moves(i, j, king=True)
 
-            # Draw the board square
-            color = COLORS["empty"] if (row + col) % 2 == 0 else COLORS["board_dark"]
-            cv2.rectangle(image, top_left, bottom_right, color, -1)
+        return capturing_moves if capturing_moves else regular_moves
 
-            # Draw the pieces
-            piece = board[row, col]
-            if piece in [PLAYER_1, PLAYER_2, KING_PLAYER_1, KING_PLAYER_2]:
-                center = (col * SQUARE_SIZE + SQUARE_SIZE // 2, row * SQUARE_SIZE + SQUARE_SIZE // 2)
-                radius = SQUARE_SIZE // 2 - 10
-                if piece == PLAYER_1:
-                    cv2.circle(image, center, radius, COLORS["player_1"], -1)
-                elif piece == PLAYER_2:
-                    cv2.circle(image, center, radius, COLORS["player_2"], -1)
-                elif piece == KING_PLAYER_1:
-                    cv2.circle(image, center, radius, COLORS["king_player_1"], -1)
-                elif piece == KING_PLAYER_2:
-                    cv2.circle(image, center, radius, COLORS["king_player_2"], -1)
-    return image
+    def get_capturing_moves(self, i, j, king=False):
+        moves = []
+        directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)] if king else [(1, 1), (1, -1)] if self.current_player == PLAYER_ONE else [(-1, 1), (-1, -1)]
 
-# Check if a move is valid
-def is_valid_move(board, player, start_pos, end_pos):
-    sx, sy = start_pos
-    ex, ey = end_pos
-
-    if not (0 <= ex < BOARD_SIZE and 0 <= ey < BOARD_SIZE):
-        return False  # Move out of bounds
-
-    if board[ex, ey] != EMPTY:
-        return False  # Destination not empty
-
-    piece = board[sx, sy]
-    opponent = PLAYER_1 if player == PLAYER_2 else PLAYER_2
-    opponent_king = KING_PLAYER_1 if player == PLAYER_2 else KING_PLAYER_2
-
-    directions = DIRECTIONS["king"] if piece in [KING_PLAYER_1, KING_PLAYER_2] else DIRECTIONS[player]
-
-    for dx, dy in directions:
-        # Normal move
-        if (sx + dx, sy + dy) == (ex, ey):
-            return True
-
-        # Capture move
-        capture_x, capture_y = sx + dx, sy + dy
-        if (
-            0 <= capture_x < BOARD_SIZE
-            and 0 <= capture_y < BOARD_SIZE
-            and board[capture_x, capture_y] in [opponent, opponent_king]  # Opponent piece
-            and 0 <= sx + 2 * dx < BOARD_SIZE
-            and 0 <= sy + 2 * dy < BOARD_SIZE
-            and board[sx + 2 * dx, sy + 2 * dy] == EMPTY  # Landing square empty
-        ):
-            return True
-
-    return False
-
-# Apply a move on the board
-def apply_move(board, start_pos, end_pos):
-    sx, sy = start_pos
-    ex, ey = end_pos
-
-    board[ex, ey] = board[sx, sy]
-    board[sx, sy] = EMPTY
-
-    # Handle captures
-    if abs(sx - ex) == 2 and abs(sy - ey) == 2:  # Capture move
-        mid_x, mid_y = (sx + ex) // 2, (sy + ey) // 2
-        board[mid_x, mid_y] = EMPTY
-
-    # Check for additional jumps
-    piece = board[ex, ey]
-    if piece in [PLAYER_1, PLAYER_2, KING_PLAYER_1, KING_PLAYER_2]:
-        directions = DIRECTIONS["king"] if piece in [KING_PLAYER_1, KING_PLAYER_2] else DIRECTIONS[PLAYER_1 if piece == PLAYER_1 else PLAYER_2]
         for dx, dy in directions:
-            capture_x, capture_y = ex + dx, ey + dy
-            landing_x, landing_y = ex + 2 * dx, ey + 2 * dy
-            if (
-                0 <= capture_x < BOARD_SIZE
-                and 0 <= capture_y < BOARD_SIZE
-                and 0 <= landing_x < BOARD_SIZE
-                and 0 <= landing_y < BOARD_SIZE
-                and board[capture_x, capture_y] in [PLAYER_1, PLAYER_2, KING_PLAYER_1, KING_PLAYER_2]
-                and board[capture_x, capture_y] != piece
-                and board[landing_x, landing_y] == EMPTY
-            ):
-                return False  # Allow another jump
+            x, y = i + dx, j + dy
+            if 0 <= x < 8 and 0 <= y < 8 and self.board[x][y] * self.current_player < 0:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < 8 and 0 <= ny < 8 and self.board[nx][ny] == 0:
+                    moves.append(((i, j), (nx, ny)))
+        return moves
 
-    # Check for king promotion
-    if ex == 0 and board[ex, ey] == PLAYER_2:
-        board[ex, ey] = KING_PLAYER_2
-    elif ex == BOARD_SIZE - 1 and board[ex, ey] == PLAYER_1:
-        board[ex, ey] = KING_PLAYER_1
+    def get_regular_moves(self, i, j, king=False):
+        moves = []
+        directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)] if king else [(1, 1), (1, -1)] if self.current_player == PLAYER_ONE else [(-1, 1), (-1, -1)]
 
-# Get all valid moves for a player
-def get_all_valid_moves(board, player):
-    moves = []
-    capture_moves = []
+        for dx, dy in directions:
+            x, y = i + dx, j + dy
+            if 0 <= x < 8 and 0 <= y < 8 and self.board[x][y] == 0:
+                moves.append(((i, j), (x, y)))
+        return moves
+
+    def make_move(self, move):
+        start, end = move
+        i, j = start
+        x, y = end
+        self.board[x][y] = self.board[i][j]
+        self.board[i][j] = 0
+
+        if abs(x - i) == 2:
+            self.board[(i + x) // 2][(j + y) // 2] = 0
+
+        if (self.current_player == PLAYER_ONE and x == 7) or (self.current_player == PLAYER_TWO and x == 0):
+            self.board[x][y] = 2 * self.current_player
+
+        self.switch_player()
+
+    def switch_player(self):
+        self.current_player = -self.current_player
+
+    def is_terminal(self):
+        return len(self.get_legal_moves()) == 0
+
+    def evaluate(self):
+        score = 0
+        for row in self.board:
+            for piece in row:
+                if piece == PLAYER_ONE:
+                    score += 1
+                elif piece == PLAYER_TWO:
+                    score -= 1
+                elif piece == KING_ONE:
+                    score += 2
+                elif piece == KING_TWO:
+                    score -= 2
+        return score
+
+    def get_next_state(self, move):
+        new_game = copy.deepcopy(self)
+        new_game.make_move(move)
+        return new_game
+
+class MinimaxAgent:
+    def __init__(self, depth=4):
+        self.depth = depth
+
+    def minimax(self, game, depth, alpha, beta, maximizing_player):
+        if depth == 0 or game.is_terminal():
+            return game.evaluate(), None
+
+        legal_moves = game.get_legal_moves()
+        if maximizing_player:
+            max_eval = -math.inf
+            best_move = None
+            for move in legal_moves:
+                new_game = game.get_next_state(move)
+                eval_score, _ = self.minimax(new_game, depth - 1, alpha, beta, False)
+                if eval_score > max_eval:
+                    max_eval = eval_score
+                    best_move = move
+                alpha = max(alpha, eval_score)
+                if beta <= alpha:
+                    break
+            return max_eval, best_move
+        else:
+            min_eval = math.inf
+            best_move = None
+            for move in legal_moves:
+                new_game = game.get_next_state(move)
+                eval_score, _ = self.minimax(new_game, depth - 1, alpha, beta, True)
+                if eval_score < min_eval:
+                    min_eval = eval_score
+                    best_move = move
+                beta = min(beta, eval_score)
+                if beta <= alpha:
+                    break
+            return min_eval, best_move
+
+    def select_move(self, game):
+        _, best_move = self.minimax(game, self.depth, -math.inf, math.inf, True)
+        return best_move
+
+def draw_board(board):
+    img = np.zeros((SQUARE_SIZE * BOARD_SIZE, SQUARE_SIZE * BOARD_SIZE, 3), dtype=np.uint8)
 
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
-            if board[row, col] in [player, player + 2]:  # Normal or King
-                directions = DIRECTIONS["king"] if board[row, col] in [KING_PLAYER_1, KING_PLAYER_2] else DIRECTIONS[player]
+            color = COLORS["light"] if (row + col) % 2 == 0 else COLORS["dark"]
+            cv2.rectangle(img, (col * SQUARE_SIZE, row * SQUARE_SIZE),
+                          ((col + 1) * SQUARE_SIZE, (row + 1) * SQUARE_SIZE), color, -1)
+            piece = board[row][col]
+            center = (col * SQUARE_SIZE + SQUARE_SIZE // 2, row * SQUARE_SIZE + SQUARE_SIZE // 2)
+            radius = SQUARE_SIZE // 3
+            if piece == PLAYER_ONE:
+                cv2.circle(img, center, radius, COLORS["p1_piece"], -1)
+            elif piece == PLAYER_TWO:
+                cv2.circle(img, center, radius, COLORS["p2_piece"], -1)
+            elif piece == KING_ONE:
+                cv2.circle(img, center, radius, COLORS["p1_king"], -1)
+            elif piece == KING_TWO:
+                cv2.circle(img, center, radius, COLORS["p2_king"], -1)
+    return img
 
-                for dx, dy in directions:
-                    new_pos = (row + dx, col + dy)
-                    if is_valid_move(board, player, (row, col), new_pos):
-                        # Check if it's a capture move
-                        if abs(dx) == 2 and abs(dy) == 2:  # Jump move indicates capture
-                            capture_moves.append(((row, col), new_pos))
-                        else:
-                            moves.append(((row, col), new_pos))
-
-    # Prioritize capture moves
-    return capture_moves if capture_moves else moves
-
-# Evaluate the board
-def evaluate_board(board):
-    score = 0
-    for row in range(BOARD_SIZE):
-        for col in range(BOARD_SIZE):
-            piece = board[row, col]
-            if piece == PLAYER_1:
-                score += 1 + (row / BOARD_SIZE)  # Bonus for advancing
-            elif piece == PLAYER_2:
-                score -= 1 + ((BOARD_SIZE - 1 - row) / BOARD_SIZE)  # Penalty for opponent advancing
-            elif piece == KING_PLAYER_1:
-                score += 3  # Kings are more valuable
-            elif piece == KING_PLAYER_2:
-                score -= 3
-    return score
-
-# Minimax algorithm with alpha-beta pruning
-def minimax(board, depth, alpha, beta, maximizing_player):
-    valid_moves = get_all_valid_moves(board, PLAYER_1 if maximizing_player else PLAYER_2)
-
-    if depth == 0 or not valid_moves:
-        return evaluate_board(board), None
-
-    best_move = None
-
-    if maximizing_player:
-        max_eval = -math.inf
-        for move in valid_moves:
-            new_board = board.copy()
-            apply_move(new_board, move[0], move[1])
-            eval_score, _ = minimax(new_board, depth - 1, alpha, beta, False)
-            if eval_score > max_eval:
-                max_eval = eval_score
-                best_move = move
-            alpha = max(alpha, eval_score)
-            if beta <= alpha:
-                break
-        return max_eval, best_move
-
-    else:
-        min_eval = math.inf
-        for move in valid_moves:
-            new_board = board.copy()
-            apply_move(new_board, move[0], move[1])
-            eval_score, _ = minimax(new_board, depth - 1, alpha, beta, True)
-            if eval_score < min_eval:
-                min_eval = eval_score
-                best_move = move
-            beta = min(beta, eval_score)
-            if beta <= alpha:
-                break
-        return min_eval, best_move
-
-# Determine the winner
-def get_winner(board, current_player):
-    player_1_pieces = np.sum((board == PLAYER_1) | (board == KING_PLAYER_1))
-    player_2_pieces = np.sum((board == PLAYER_2) | (board == KING_PLAYER_2))
-
-    if player_1_pieces == 0:
-        return "Player 2 wins!"
-    elif player_2_pieces == 0:
-        return "Player 1 wins!"
-
-    # Check for no valid moves
-    if not get_all_valid_moves(board, current_player):
-        return f"Player {3 - current_player} wins! (No valid moves)"
-
-    return None
-
-# Main game loop
 def main():
-    board = create_board()
-    turn = PLAYER_1
+    game = CheckersGame()
+    agent = MinimaxAgent(depth=4)
 
-    while True:
-        # Draw the board
-        image = draw_board(board)
-        cv2.imshow("Checkers", image)
+    while not game.is_terminal():
+        img = draw_board(game.board)
+        cv2.imshow("Checkers Game", img)
         cv2.waitKey(500)
 
-        # Minimax to decide the move
-        _, best_move = minimax(board, 4, -math.inf, math.inf, turn == PLAYER_1)
-
-        if best_move:
-            apply_move(board, best_move[0], best_move[1])
+        move = agent.select_move(game)
+        if move:
+            game.make_move(move)
         else:
-            winner = get_winner(board, turn)
-            print(winner if winner else f"Player {turn} has no valid moves! Game over.")
+            print("No moves left!")
             break
 
-        # Switch turns
-        turn = PLAYER_1 if turn == PLAYER_2 else PLAYER_2
+    print("Game Over!")
+
+    #print which player won the game
+    final_score = game.evaluate()
+    if final_score > 0:
+        print("Player 1 (Red) wins!")
+    elif final_score < 0:
+        print("Player 2 (Blue) wins!")
+    else:
+        print("It's a draw!")
+
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 

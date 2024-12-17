@@ -3,171 +3,230 @@ import cv2
 import random
 import math
 
-class Node:
-    def __init__(self, board, parent=None, move=None, player=1):
-        self.board = np.copy(board)
+# Node class for the Monte Carlo Tree Search (MCTS)
+class GameNode:
+    def __init__(self, game_grid, parent=None, move_made=None, current_player=1):
+        """
+        Represents a node in the game tree.
+        """
+        self.grid = np.copy(game_grid)
         self.parent = parent
-        self.move = move
-        self.player = player
+        self.move_made = move_made
+        self.player = current_player
         self.visits = 0
-        self.value = 0
-        self.children = []
+        self.score = 0
+        self.kids = []
 
-    def expand(self, valid_moves):
-        for move in valid_moves:
-            new_board = np.copy(self.board)
-            x, y = move
-            new_board[x, y] = self.player
-            self.children.append(Node(new_board, self, move, -self.player))
+    def expand_node(self, all_moves):
+        """
+        Add new child nodes for all possible moves.
+        """
+        # Go through each move
+        for m in all_moves:
+            # Copy the board state
+            new_board = np.copy(self.grid)
+            row, col = m
+            new_board[row, col] = self.player
+            # Add new node
+            self.kids.append(GameNode(new_board, self, m, -self.player))
 
-    def best_child(self, exploration_weight=1.4):
-        if not self.children:  # Handle case where no valid moves exist
+    def find_best_child(self, explore_factor=1.4):
+        """
+        Find the child node with the highest UCT score.
+        """
+        # If no moves exist, return None
+        if not self.kids:
             return None
-        return max(self.children, key=lambda child: child.value / (child.visits + 1e-6) + exploration_weight * math.sqrt(math.log(self.visits + 1) / (child.visits + 1e-6)))
+        # Formula to balance exploration and exploitation
+        return max(self.kids, key=lambda child: child.score / (child.visits + 1e-6) +
+                   explore_factor * math.sqrt(math.log(self.visits + 1) / (child.visits + 1e-6)))
 
-    def backpropagate(self, result):
+    def backtrack_results(self, result):
+        """
+        Backpropagate results of the simulation to the root node.
+        """
+        # Increment visit count
         self.visits += 1
-        self.value += result
+        # Update score
+        self.score += result
+        # Backtrack to parent with flipped result
         if self.parent:
-            self.parent.backpropagate(-result)
+            self.parent.backtrack_results(-result)
 
-    def is_fully_expanded(self, valid_moves):
-        return len(self.children) == len(valid_moves)
+    def fully_expanded(self, all_moves):
+        """
+        Check if all possible moves have been expanded as children.
+        """
+        return len(self.kids) == len(all_moves)
 
-class GoGameWithOpenCV:
-    def __init__(self, size=5):
-        self.size = size
-        self.board = np.zeros((size, size), dtype=int)
-        self.current_player = 1  # 1 for black, -1 for white
-        self.cell_size = 100
-        self.board_color = (255, 220, 180)  # Light beige
-        self.black_stone_color = (0, 0, 0)
-        self.white_stone_color = (255, 255, 255)
-        self.previous_states = []
-        self.pass_count = 0
-        self.game_over = False
-        self.move_history = []
+# Main Go Game class
+class SimpleGoGame:
+    def __init__(self, board_size=5):
+        """
+        Set up the game board and basic parameters.
+        """
+        self.size = board_size
+        self.grid = np.zeros((board_size, board_size), dtype=int)
+        self.turn = 1
+        self.tile_size = 100
+        self.bg_color = (255, 220, 180)
+        self.black_stone = (0, 0, 0)
+        self.white_stone = (255, 255, 255)
+        self.pass_counter = 0
+        self.done = False
 
-    def is_valid_move(self, x, y):
-        if not (0 <= x < self.size and 0 <= y < self.size) or self.board[x, y] != 0:
+    def check_valid_spot(self, row, col):
+        """
+        Verify if a move is valid.
+        """
+        # Outside the board or already occupied
+        if not (0 <= row < self.size and 0 <= col < self.size) or self.grid[row, col] != 0:
             return False
-        temp_board = np.copy(self.board)
-        temp_board[x, y] = self.current_player
-        return self.has_liberties(temp_board, x, y)
 
-    def has_liberties(self, board, x, y, visited=None):
+        # Check if placing a stone creates liberties
+        temp_grid = np.copy(self.grid)
+        temp_grid[row, col] = self.turn
+        return self.check_liberty(temp_grid, row, col)
+
+    def check_liberty(self, grid_state, row, col, visited=None):
+        """
+        Check for liberties (free spaces) for a group of stones.
+        """
         if visited is None:
             visited = set()
-        if (x, y) in visited:
+        if (row, col) in visited:
             return False
-        visited.add((x, y))
+        visited.add((row, col))
+
         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < self.size and 0 <= ny < self.size:
-                if board[nx, ny] == 0:
+            # Check neighboring cells
+            nr, nc = row + dx, col + dy
+            if 0 <= nr < self.size and 0 <= nc < self.size:
+                # Liberty found
+                if grid_state[nr, nc] == 0:
                     return True
-                if board[nx, ny] == board[x, y] and self.has_liberties(board, nx, ny, visited):
+                if grid_state[nr, nc] == grid_state[row, col] and self.check_liberty(grid_state, nr, nc, visited):
                     return True
         return False
 
-    def get_valid_moves(self):
-        return [(x, y) for x in range(self.size) for y in range(self.size) if self.is_valid_move(x, y)]
+    def possible_moves(self):
+        """
+        Return all valid moves for the current player.
+        """
+        return [(row, col) for row in range(self.size) for col in range(self.size) if self.check_valid_spot(row, col)]
 
-    def make_move(self, x, y):
-        if not self.is_valid_move(x, y):
+    def place_stone(self, row, col):
+        """
+        Make a move by placing a stone on the board.
+        """
+        if not self.check_valid_spot(row, col):
             return False
-        self.board[x, y] = self.current_player
-        self.current_player *= -1  # Switch player
-        self.pass_count = 0
-        print(f"Player {'Black' if self.current_player == -1 else 'White'} places a stone at ({x}, {y})")
+        self.grid[row, col] = self.turn
+        # Switch player turn
+        self.turn *= -1
+        self.pass_counter = 0
+        print(f"Player {'Black' if self.turn == -1 else 'White'} placed at ({row}, {col})")
         return True
 
-    def pass_turn(self):
-        print(f"Player {'Black' if self.current_player == 1 else 'White'} passes their turn.")
-        self.current_player *= -1
-        self.pass_count += 1
-        if self.pass_count >= 2:
-            self.calculate_winner()
+    def pass_move(self):
+        """
+        Allow the current player to pass their turn.
+        """
+        print(f"Player {'Black' if self.turn == 1 else 'White'} passed.")
+        self.pass_counter += 1
+        self.turn *= -1
+        if self.pass_counter >= 2:
+            self.calculate_scores()
 
-    def calculate_winner(self):
-        black_score = np.sum(self.board == 1)
-        white_score = np.sum(self.board == -1)
-        print("Game Over")
-        print(f"Final Scores -> Black: {black_score}, White: {white_score}")
+    def calculate_scores(self):
+        """
+        Calculate final scores and determine the winner.
+        """
+        black_score = np.sum(self.grid == 1)
+        white_score = np.sum(self.grid == -1)
+        print("Game Over!")
+        print(f"Final Score -> Black: {black_score}, White: {white_score}")
         if black_score > white_score:
             print("Winner: Black")
         elif white_score > black_score:
             print("Winner: White")
         else:
-            print("It's a tie!")
-        self.game_over = True
+            print("It's a draw!")
+        self.done = True
 
-    def mcts(self, simulations=100):
-        root = Node(self.board, player=self.current_player)
+    def monte_carlo_tree(self, simulations=200):
+        """
+        Perform Monte Carlo Tree Search to find the best move.
+        """
+        root = GameNode(self.grid, current_player=self.turn)
         for _ in range(simulations):
             node = root
-            # Selection
-            while node.children and node.is_fully_expanded(self.get_valid_moves()):
-                node = node.best_child()
-            # Expansion
-            valid_moves = self.get_valid_moves()
-            if not node.children and valid_moves:
-                node.expand(valid_moves)
-                node = random.choice(node.children)
-            # Simulation
-            winner = self.simulate_game(node.board, node.player)
-            # Backpropagation
-            node.backpropagate(winner)
-        best_child = root.best_child(exploration_weight=0)
-        return best_child.move if best_child else None
+            while node.kids and node.fully_expanded(self.possible_moves()):
+                node = node.find_best_child()
+            valid_moves = self.possible_moves()
+            if not node.kids and valid_moves:
+                node.expand_node(valid_moves)
+                node = random.choice(node.kids)
+            result = self.simulate_random_game(node.grid, node.player)
+            node.backtrack_results(result)
+        best_next = root.find_best_child(explore_factor=0)
+        return best_next.move_made if best_next else None
 
-    def simulate_game(self, board, player):
-        temp_board = np.copy(board)
+    def simulate_random_game(self, grid, player):
+        """
+        Simulate a game randomly.
+        """
+        sim_grid = np.copy(grid)
         temp_player = player
         while True:
-            moves = [(x, y) for x in range(self.size) for y in range(self.size) if temp_board[x, y] == 0]
-            if not moves:
+            all_moves = [(r, c) for r in range(self.size) for c in range(self.size) if sim_grid[r, c] == 0]
+            if not all_moves:
                 break
-            move = random.choice(moves)
-            temp_board[move[0], move[1]] = temp_player
+            r, c = random.choice(all_moves)
+            sim_grid[r, c] = temp_player
             temp_player *= -1
-        black_score = np.sum(temp_board == 1)
-        white_score = np.sum(temp_board == -1)
-        return 1 if black_score > white_score else -1 if white_score > black_score else 0
+        black = np.sum(sim_grid == 1)
+        white = np.sum(sim_grid == -1)
+        return 1 if black > white else -1 if white > black else 0
 
-    def draw_board(self):
-        img_size = self.size * self.cell_size
+    def show_board(self):
+        """
+        Render the board visually with OpenCV.
+        """
+        img_size = self.size * self.tile_size
         img = np.ones((img_size, img_size, 3), dtype=np.uint8) * 255
-        img[:, :] = self.board_color
+        img[:, :] = self.bg_color
         for i in range(self.size + 1):
-            start = i * self.cell_size
+            start = i * self.tile_size
             cv2.line(img, (start, 0), (start, img_size), (0, 0, 0), 2)
             cv2.line(img, (0, start), (img_size, start), (0, 0, 0), 2)
-        for x in range(self.size):
-            for y in range(self.size):
-                if self.board[x, y] == 1:
-                    center = (y * self.cell_size + self.cell_size // 2, x * self.cell_size + self.cell_size // 2)
-                    cv2.circle(img, center, self.cell_size // 3, self.black_stone_color, -1)
-                elif self.board[x, y] == -1:
-                    center = (y * self.cell_size + self.cell_size // 2, x * self.cell_size + self.cell_size // 2)
-                    cv2.circle(img, center, self.cell_size // 3, self.white_stone_color, -1)
+        for r in range(self.size):
+            for c in range(self.size):
+                center = (c * self.tile_size + self.tile_size // 2, r * self.tile_size + self.tile_size // 2)
+                if self.grid[r, c] == 1:
+                    cv2.circle(img, center, self.tile_size // 3, self.black_stone, -1)
+                elif self.grid[r, c] == -1:
+                    cv2.circle(img, center, self.tile_size // 3, self.white_stone, -1)
         return img
 
     def play_game(self):
-        while not self.game_over:
-            img = self.draw_board()
+        """
+        Run the game using MCTS for decisions.
+        """
+        while not self.done:
+            img = self.show_board()
             cv2.imshow("Go Game", img)
             cv2.waitKey(500)
-            move = self.mcts(simulations=200)
+            move = self.monte_carlo_tree(simulations=200)
             if move:
-                self.make_move(*move)
+                self.place_stone(*move)
             else:
-                self.pass_turn()
-        img = self.draw_board()
+                self.pass_move()
+        img = self.show_board()
         cv2.imshow("Go Game", img)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
 # Run the game
-game = GoGameWithOpenCV(size=5)
+game = SimpleGoGame(board_size=5)
 game.play_game()

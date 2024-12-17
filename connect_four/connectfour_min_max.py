@@ -19,12 +19,14 @@ def make_board():
 
 # Function to drop a piece in the board at a specific location
 def put_piece(board, row, column, piece):
-    board[row][column] = piece  # Puts the piece in the grid
+    # Puts the piece in the grid
+    board[row][column] = piece
 
 
 # Function to check if a column is not full
 def is_column_valid(board, col):
-    return board[ROW_COUNT - 1][col] == EMPTY  # Checks top row
+    # Checks top row
+    return board[ROW_COUNT - 1][col] == EMPTY
 
 
 # Function to find the first empty row in a column
@@ -66,16 +68,17 @@ def check_winner(board, piece):
 # Function to calculate score of a window for AI evaluation
 def eval_window(window, piece):
     score = 0
-    opp_piece = PLAYER_1 if piece == PLAYER_2 else PLAYER_2  # Opponent's piece
+    # Opponent's piece
+    opp_piece = PLAYER_1 if piece == PLAYER_2 else PLAYER_2
 
     # Conditions to calculate the score
-    if window.count(piece) == 4:  # 4 in a row (win)
+    if window.count(piece) == 4:
         score += 100
-    elif window.count(piece) == 3 and window.count(EMPTY) == 1:  # 3 pieces + 1 empty
+    elif window.count(piece) == 3 and window.count(EMPTY) == 1:
         score += 5
-    elif window.count(piece) == 2 and window.count(EMPTY) == 2:  # 2 pieces + 2 empty
+    elif window.count(piece) == 2 and window.count(EMPTY) == 2:
         score += 2
-    elif window.count(opp_piece) == 3 and window.count(EMPTY) == 1:  # Opponent has 3 in a row
+    elif window.count(opp_piece) == 3 and window.count(EMPTY) == 1:
         score -= 4
 
     return score
@@ -186,7 +189,8 @@ def find_valid_columns(board):
 def draw_board_image(board):
     for c in range(COLUMN_COUNT):
         for r in range(ROW_COUNT):
-            color = (0, 0, 0)  # Black for empty spaces
+            # Black for empty spaces
+            color = (0, 0, 0)
             if board[r][c] == PLAYER_1:
                 color = (255, 0, 0)
             elif board[r][c] == PLAYER_2:

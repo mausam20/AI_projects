@@ -2,7 +2,6 @@ import numpy as np
 import cv2
 import math
 import random
-from collections import defaultdict
 
 # Constants
 ROWS = 6  # Total rows on the board
@@ -20,11 +19,13 @@ def make_board():
 
 # Drop the piece in the selected column
 def place_piece(board, row, col, player):
-    board[row][col] = player  # Put the player's piece at the right spot
+    # Put the player's piece at the right spot
+    board[row][col] = player
 
 # Check if the column has space to place a piece
 def valid_column(board, col):
-    return board[ROWS - 1][col] == EMPTY  # Topmost row should be empty
+    # Topmost row should be empty
+    return board[ROWS - 1][col] == EMPTY
 
 # Find the lowest empty row in a column
 def find_empty_row(board, col):
@@ -81,8 +82,8 @@ def random_game_sim(board, player):
         valid_cols = find_valid_cols(temp_board)
         if not valid_cols:
             break  # Stop if no moves left
-
-        col = random.choice(valid_cols)  # Pick a random column
+        # Pick a random column
+        col = random.choice(valid_cols)
         row = find_empty_row(temp_board, col)
         place_piece(temp_board, row, col, current_player)
 
@@ -101,7 +102,8 @@ class MCTSNode:
         self.player = player
         self.visits = 0
         self.wins = 0
-        self.children = {}  # Stores child nodes
+        # Stores child nodes
+        self.children = {}
 
     def is_fully_expanded(self):
         return len(self.children) == len(find_valid_cols(self.board))
@@ -142,7 +144,8 @@ def mcts_search(board, player, iterations=1000):
             node.visits += 1
             if node.player == winner:
                 node.wins += 1
-            node = None  # Parent relationship not implemented
+            # Parent relationship not implemented
+            node = None
 
     return max(root.children, key=lambda c: root.children[c].wins / (root.children[c].visits + 1e-6))
 
@@ -152,7 +155,8 @@ def draw_board(board):
     image = np.ones((SQUARE * ROWS, SQUARE * COLS, 3), dtype=np.uint8) * 255
     for c in range(COLS):
         for r in range(ROWS):
-            color = (0, 0, 0)  # Black for empty
+            # Black for empty
+            color = (0, 0, 0)
             if board[r][c] == PLAYER1:
                 color = (255, 0, 0)
             elif board[r][c] == PLAYER2:
@@ -164,7 +168,8 @@ def draw_board(board):
 
 # Game variables
 game_board = make_board()
-turn = 0  # 0 for Player 1, 1 for Player 2
+# 0 for Player 1, 1 for Player 2
+turn = 0
 
 # Show the board
 def show_game():
@@ -189,7 +194,7 @@ while not is_game_over(game_board):
             show_game()
             print(f"Player {1 if turn == 0 else 2} wins!")
             break
-
-        turn = (turn + 1) % 2  # Switch turns
+        # Switch turns
+        turn = (turn + 1) % 2
 
 cv2.destroyAllWindows()
