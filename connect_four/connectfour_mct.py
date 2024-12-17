@@ -5,105 +5,115 @@ import random
 from collections import defaultdict
 
 # Constants
-ROW_COUNT = 6
-COLUMN_COUNT = 7
-PLAYER_1 = 1
-PLAYER_2 = 2
-EMPTY = 0
-SQUARESIZE = 100
-RADIUS = SQUARESIZE // 2 - 5
-WINDOW_LENGTH = 4
+ROWS = 6  # Total rows on the board
+COLS = 7  # Total columns
+PLAYER1 = 1  # First player (AI)
+PLAYER2 = 2  # Second player (AI)
+EMPTY = 0  # Empty cell
+SQUARE = 100  # Size of each square in the GUI
+RADIUS = SQUARE // 2 - 5  # Circle radius
+WIN_LENGTH = 4  # Length to win the game (4 in a row)
 
-def create_board():
-    return np.zeros((ROW_COUNT, COLUMN_COUNT), dtype=int)
+# Create an empty game board
+def make_board():
+    return np.zeros((ROWS, COLS), dtype=int)
 
-def drop_piece(board, row, col, piece):
-    board[row][col] = piece
+# Drop the piece in the selected column
+def place_piece(board, row, col, player):
+    board[row][col] = player  # Put the player's piece at the right spot
 
-def is_valid_location(board, col):
-    return board[ROW_COUNT - 1][col] == EMPTY
+# Check if the column has space to place a piece
+def valid_column(board, col):
+    return board[ROWS - 1][col] == EMPTY  # Topmost row should be empty
 
-def get_next_open_row(board, col):
-    for r in range(ROW_COUNT):
+# Find the lowest empty row in a column
+def find_empty_row(board, col):
+    for r in range(ROWS):
         if board[r][col] == EMPTY:
-            return r
+            return r  # Return the first empty spot
 
-def winning_move(board, piece):
-    # Check horizontal locations for win
-    for c in range(COLUMN_COUNT - 3):
-        for r in range(ROW_COUNT):
-            if all(board[r, c+i] == piece for i in range(WINDOW_LENGTH)):
+# Check if a player has won
+def has_won(board, player):
+    # Check horizontal win
+    for c in range(COLS - 3):
+        for r in range(ROWS):
+            if all(board[r, c+i] == player for i in range(WIN_LENGTH)):
                 return True
 
-    # Check vertical locations for win
-    for c in range(COLUMN_COUNT):
-        for r in range(ROW_COUNT - 3):
-            if all(board[r+i, c] == piece for i in range(WINDOW_LENGTH)):
+    # Check vertical win
+    for c in range(COLS):
+        for r in range(ROWS - 3):
+            if all(board[r+i, c] == player for i in range(WIN_LENGTH)):
                 return True
 
-    # Check positively sloped diagonals
-    for c in range(COLUMN_COUNT - 3):
-        for r in range(ROW_COUNT - 3):
-            if all(board[r+i, c+i] == piece for i in range(WINDOW_LENGTH)):
+    # Check diagonals (positive slope)
+    for c in range(COLS - 3):
+        for r in range(ROWS - 3):
+            if all(board[r+i, c+i] == player for i in range(WIN_LENGTH)):
                 return True
 
-    # Check negatively sloped diagonals
-    for c in range(COLUMN_COUNT - 3):
-        for r in range(3, ROW_COUNT):
-            if all(board[r-i, c+i] == piece for i in range(WINDOW_LENGTH)):
+    # Check diagonals (negative slope)
+    for c in range(COLS - 3):
+        for r in range(3, ROWS):
+            if all(board[r-i, c+i] == player for i in range(WIN_LENGTH)):
                 return True
 
     return False
 
-def is_terminal_node(board):
-    return winning_move(board, PLAYER_1) or winning_move(board, PLAYER_2) or len(get_valid_locations(board)) == 0
+# Check if the game is over (win or draw)
+def is_game_over(board):
+    return has_won(board, PLAYER1) or has_won(board, PLAYER2) or len(find_valid_cols(board)) == 0
 
-def get_valid_locations(board):
-    valid_locations = []
-    for col in range(COLUMN_COUNT):
-        if is_valid_location(board, col):
-            valid_locations.append(col)
-    return valid_locations
+# Find all valid columns where a move can be made
+def find_valid_cols(board):
+    valid_cols = []
+    for col in range(COLS):
+        if valid_column(board, col):
+            valid_cols.append(col)
+    return valid_cols
 
-def simulate_random_game(board, player):
+# Simulate a random game to see who wins
+def random_game_sim(board, player):
+    temp_board = board.copy()
     current_player = player
-    sim_board = board.copy()
 
-    while not is_terminal_node(sim_board):
-        valid_locations = get_valid_locations(sim_board)
-        if not valid_locations:
-            break
+    while not is_game_over(temp_board):
+        valid_cols = find_valid_cols(temp_board)
+        if not valid_cols:
+            break  # Stop if no moves left
 
-        col = random.choice(valid_locations)
-        row = get_next_open_row(sim_board, col)
-        drop_piece(sim_board, row, col, current_player)
+        col = random.choice(valid_cols)  # Pick a random column
+        row = find_empty_row(temp_board, col)
+        place_piece(temp_board, row, col, current_player)
 
-        if winning_move(sim_board, current_player):
-            return current_player
+        if has_won(temp_board, current_player):
+            return current_player  # Return the winner
 
-        current_player = PLAYER_1 if current_player == PLAYER_2 else PLAYER_2
+        # Switch player turn
+        current_player = PLAYER1 if current_player == PLAYER2 else PLAYER2
 
     return 0  # Draw
 
+# MCTS Node Class
 class MCTSNode:
     def __init__(self, board, player):
         self.board = board
         self.player = player
         self.visits = 0
         self.wins = 0
-        self.children = {}
+        self.children = {}  # Stores child nodes
 
     def is_fully_expanded(self):
-        return len(self.children) == len(get_valid_locations(self.board))
+        return len(self.children) == len(find_valid_cols(self.board))
 
-    def best_child(self, exploration_weight=1.0):
-        choices_weights = [
-            (child.wins / (child.visits + 1e-6)) +
-            exploration_weight * math.sqrt(math.log(self.visits + 1) / (child.visits + 1e-6))
+    def best_child(self, explore=1.0):
+        scores = [
+            (child.wins / (child.visits + 1e-6)) + explore * math.sqrt(math.log(self.visits + 1) / (child.visits + 1e-6))
             for child in self.children.values()
         ]
-        return list(self.children.values())[np.argmax(choices_weights)]
+        return list(self.children.values())[np.argmax(scores)]
 
+# Monte Carlo Tree Search (MCTS) to decide the best move
 def mcts_search(board, player, iterations=1000):
     root = MCTSNode(board, player)
 
@@ -111,26 +121,24 @@ def mcts_search(board, player, iterations=1000):
         node = root
         sim_board = board.copy()
 
-        # Selection
-        while not is_terminal_node(sim_board) and node.is_fully_expanded():
+        # Selection phase: Move to best child until unexpanded node
+        while not is_game_over(sim_board) and node.is_fully_expanded():
             node = node.best_child()
 
-        # Expansion
-        valid_locations = get_valid_locations(sim_board)
-        if valid_locations:
-            col = random.choice(valid_locations)
-            row = get_next_open_row(sim_board, col)
+        # Expansion phase: Add a child node for a valid move
+        valid_cols = find_valid_cols(sim_board)
+        if valid_cols:
+            col = random.choice(valid_cols)
+            row = find_empty_row(sim_board, col)
             next_board = sim_board.copy()
-            drop_piece(next_board, row, col, player)
-            new_node = MCTSNode(next_board, PLAYER_1 if player == PLAYER_2 else PLAYER_2)
-            node.children[col] = new_node
-            node = new_node
+            place_piece(next_board, row, col, player)
+            node.children[col] = MCTSNode(next_board, PLAYER1 if player == PLAYER2 else PLAYER2)
 
-        # Simulation
-        winner = simulate_random_game(sim_board, player)
+        # Simulation phase: Random game to determine winner
+        winner = random_game_sim(sim_board, player)
 
-        # Backpropagation
-        while node is not None:
+        # Backpropagation phase: Update visit and win stats
+        while node:
             node.visits += 1
             if node.player == winner:
                 node.wins += 1
@@ -138,51 +146,50 @@ def mcts_search(board, player, iterations=1000):
 
     return max(root.children, key=lambda c: root.children[c].wins / (root.children[c].visits + 1e-6))
 
+# Draw the Connect Four game board
 def draw_board(board):
     global image
-    image = np.ones((SQUARESIZE * ROW_COUNT, SQUARESIZE * COLUMN_COUNT, 3), dtype=np.uint8) * 255
-    for c in range(COLUMN_COUNT):
-        for r in range(ROW_COUNT):
-            color = (0, 0, 0)
-            if board[r][c] == PLAYER_1:
+    image = np.ones((SQUARE * ROWS, SQUARE * COLS, 3), dtype=np.uint8) * 255
+    for c in range(COLS):
+        for r in range(ROWS):
+            color = (0, 0, 0)  # Black for empty
+            if board[r][c] == PLAYER1:
                 color = (255, 0, 0)
-            elif board[r][c] == PLAYER_2:
+            elif board[r][c] == PLAYER2:
                 color = (255, 255, 0)
-            cv2.circle(image, (c * SQUARESIZE + SQUARESIZE // 2, r * SQUARESIZE + SQUARESIZE // 2), RADIUS, color, -1)
+            cv2.circle(image, (c * SQUARE + SQUARE // 2, r * SQUARE + SQUARE // 2), RADIUS, color, -1)
     cv2.imshow("Connect Four", image)
     cv2.waitKey(500)
+
 
 # Game variables
-board = create_board()
-turn = 0
+game_board = make_board()
+turn = 0  # 0 for Player 1, 1 for Player 2
 
-def display_game():
-    global image
-    image = np.ones((SQUARESIZE*ROW_COUNT, SQUARESIZE*COLUMN_COUNT, 3), dtype=np.uint8)*255
-    draw_board(board)
-    cv2.imshow("Connect Four", image)
-    cv2.waitKey(500)
+# Show the board
+def show_game():
+    draw_board(game_board)
 
 # Main game loop
-while not is_terminal_node(board):
-    display_game()
+while not is_game_over(game_board):
+    show_game()
 
+    # AI move using MCTS
     if turn == 0:
-        # print("Player 1 (AI) turn")
-        col = mcts_search(board, PLAYER_1)
+        col = mcts_search(game_board, PLAYER1)
     else:
-        # print("Player 2 (AI) turn")
-        col = mcts_search(board, PLAYER_2)
+        col = mcts_search(game_board, PLAYER2)
 
-    if is_valid_location(board, col):
-        row = get_next_open_row(board, col)
-        drop_piece(board, row, col, PLAYER_1 if turn == 0 else PLAYER_2)
+    if valid_column(game_board, col):
+        row = find_empty_row(game_board, col)
+        place_piece(game_board, row, col, PLAYER1 if turn == 0 else PLAYER2)
 
-        if winning_move(board, PLAYER_1 if turn == 0 else PLAYER_2):
-            display_game()
+        # Check for a win
+        if has_won(game_board, PLAYER1 if turn == 0 else PLAYER2):
+            show_game()
             print(f"Player {1 if turn == 0 else 2} wins!")
             break
 
-        turn = (turn + 1) % 2
+        turn = (turn + 1) % 2  # Switch turns
 
 cv2.destroyAllWindows()
